@@ -4,7 +4,7 @@
 library(here)
 library(caret)
 library(doMC)
-registerDoMC(cores=8)
+registerDoMC(cores=16)
 set.seed(1234)
 load(here('data/retina_seurat_subSet.Rdata'))
 trainIndex <- createDataPartition(retina@meta.data$res.1, p=0.5, times=1, list=T)
@@ -19,7 +19,8 @@ rf_mod <- train(x=retinaTrain, y=outcomesTrain, method = 'rf', trControl = myCon
 svm_mod <- train(x=retinaTrain, y=outcomesTrain, method = 'svmLinear', trControl = myControl, tuneGrid = data.frame(.C = c(.25, .5, 1)))
 LogitBoost_mod <- train(x=retinaTrain, y=outcomesTrain, method = 'LogitBoost', trControl = myControl)
 bayes_mod <- train(x=retinaTrain, y=outcomesTrain, method = 'bayesglm', trControl = myControl)
-keras_net_mod <- train(x=retinaTrain, y=outcomesTrain, trControl = myControl, method = 'mlpKeras')
+gbm_mod <- train(x=retinaTrain, y=outcomesTrain, method = 'gbm', trControl = myControl)
+#keras_net_mod <- train(x=retinaTrain, y=outcomesTrain, trControl = myControl, method = 'mlpKeras')
 #naive_bayes_mod <-  train(x=retinaTrain, y=outcomesTrain, method = 'naive_bayes', trControl = myControl)
 
 
