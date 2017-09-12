@@ -1,0 +1,268 @@
+---
+title: "Pull Macosko et al. single cell mouse retina data"
+output:
+  html_notebook:
+author: David McGaughey
+date: 2017-09-05
+---
+
+David,
+Please see the link below for the paper on Single-Cell retinal sequencing paper.  We can ask the following questions.
+Whether Nlz2 present one or more clusters?
+Whether Nlz2 present in Amacrine or ganglion cell clusters?
+If present, what other transcriptional factors present in those clusters?
+
+http://www.sciencedirect.com/science/article/pii/S0092867415005498
+
+There is another paper on Single-cell sequencing done on Bipolar cell.  See the link below.
+http://www.sciencedirect.com/science/article/pii/S0092867416310078
+
+Thanks for your help.
+
+Elan
+
+
+https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE63472
+https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE63472&format=file&file=GSE63472%5FP14Retina%5FlogDGE%2Etxt%2Egz
+https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE63472&format=file&file=GSE63472%5FP14Retina%5Fmerged%5Fdigital%5Fexpression%2Etxt%2Egz
+http://mccarrolllab.com/wp-content/uploads/2015/05/retina_clusteridentities.txt
+
+Three approaches tried:
+
+1. Seurat
+2. Monocle
+3. Aaron Lun (https://bioconductor.org/help/workflows/simpleSingleCell/)
+
+Seurat was the more performant option, compared to Monocle. I also had better success with clustering assignments and t-SNE. 
+
+Seurat-based approach
+```{r}
+library(cowplot)
+library(Seurat)
+library(tidyverse)
+dge <- read_tsv('~/Downloads//GSE63472_P14Retina_merged_digital_expression.txt')
+dge_mat <- dge[,2:ncol(dge)] %>% as.matrix() %>%  Matrix(.,sparse = TRUE)
+row.names(dge_mat) <- dge$gene
+retina <- CreateSeuratObject(raw.data = dge_mat, min.cells = 0.001 * ncol(dge_mat), min.genes = 200)
+
+mito.genes <- grep(pattern = "^MT-", x = rownames(x = retina@data), value = TRUE)
+percent.mito <- colSums(as.matrix(retina@data[mito.genes, ])) / colSums(as.matrix(retina@data))
+retina <- AddMetaData(object = retina, metadata = percent.mito, col.name = "percent.mito")
+VlnPlot(object = retina, features.plot = c("nGene", "nUMI", "percent.mito"), nCol = 3)
+
+
+# GenePlot is typically used to visualize gene-gene relationships, but can
+# be used for anything calculated by the object, i.e. columns in
+# object@data.info, PC scores etc.  Since there is a rare subset of cells
+# with an outlier level of high mitochondrial percentage and also low UMI
+# content, we filter these as well
+par(mfrow = c(1, 2))
+GenePlot(object = retina, gene1 = "nUMI", gene2 = "percent.mito")
+GenePlot(object = retina, gene1 = "nUMI", gene2 = "nGene")
+
+# We filter out cells that have unique gene counts over 6,000 or less than
+# 900 Note that low.thresholds and high.thresholds are used to define a
+# 'gate' -Inf and Inf should be used if you don't want a lower or upper
+# threshold.
+
+# this dramatically reduces the number of cells from ~45,000 to ~13,0000, but clustering is much better
+# macosko et al clustered on ~13,000 initially, then did some fancy stuff to project the remaining 35,000 (mostly rod cells)
+# onto the mapping
+retina_superset <- FilterCells(object = retina, subset.names = c("nGene", "percent.mito"), 
+                      low.thresholds = c(200, -Inf), high.thresholds = c(6000, 0.05))
+retina <- FilterCells(object = retina, subset.names = c("nGene", "percent.mito"), 
+                      low.thresholds = c(900, -Inf), high.thresholds = c(6000, 0.05))
+
+# Normalize the data
+retina <- NormalizeData(object = retina, normalization.method = "LogNormalize")
+
+# Choose gene outliers on mean-variability plot
+retina <- FindVariableGenes(object = retina, x.low.cutoff = 0, y.cutoff = 2)
+length(x = retina@var.genes)
+
+
+# Perform negative-binomial regression on the variable genes, this sets their value in retina@scale.data, which is used for PCA/clustering
+# We only do this on the variable genes to save time, but you can do this genome-wide
+# We treat mitochondrial percentage, batch, and nUMI as confounding variables,
+# I am using the variable gene set calculated from the 'tight' FilterCell threshold, as these are a more stable set
+retina <- ScaleData(object = retina, vars.to.regress = c("percent.mito", "nUMI","orig.ident"), genes.use = retina@var.genes, model.use = "negbinom")
+
+# you can save the object at any time to save results, and can restore it back in using load()
+save(retina, file = "./retina_seurat__1.Rdata")
+
+
+# Run PCA with the IRLBA package (iteratively computes the top dimensions, dramatic increase in speed since we only use a fraction of the PCs anyways)
+# if you see the warning "did not converge–results might be invalid!; try increasing maxit or fastpath=FALSE", try increasing maxit
+retina <- RunPCA(object = retina, pc.genes = retina@var.genes, pcs.compute = 40, pcs.print = 1:10, maxit = 2000, weight.by.var = FALSE)
+
+# elbow at 30
+PCElbowPlot(object = retina, num.pc = 40)
+PrintPCA(object = retina, pcs.print = 1:36)
+PCHeatmap(object = retina, pc.use = 1:12,100)
+#PCHeatmap(object = retina, pc.use = 13:24,100)
+#PCHeatmap(object = retina, pc.use = 25:36,100)
+
+VizPCA(object = retina, pcs.use = 1:2)
+
+# save.SNN means that you can easily re-run with different resolution values.
+retina <- FindClusters(object = retina, reduction.type = "pca", dims.use = 1:30, resolution = 1.2, save.SNN = TRUE)
+
+# match PCs used to FindClusters above
+retina <- RunTSNE(object = retina, dims.use = 1:30, do.fast = TRUE, perplexity=10, check_duplicates=F)
+TSNEPlot(object = retina, do.label = TRUE)
+```
+
+Label clusters with Macosko et al. assignments
+```{r}
+# load Macosko cluster assignments for each cell
+macosko_cluster = read_tsv('~/Downloads/retina_clusteridentities.txt', col_names = F) %>% data.frame()
+row.names(macosko_cluster) <- macosko_cluster$X1
+macosko_cluster <- macosko_cluster %>% select(X1, X2)
+colnames(macosko_cluster) <- c('id','Macosko_Clusters')
+macosko_cluster$Macosko_Clusters <- as.integer(macosko_cluster$Macosko_Clusters)
+# https://github.com/olgabot/macosko2015/blob/master/notebooks/02_make_celltype_metadata.ipynb
+naming <- data.frame(rbind(c(1, 'Horizontal cells'),
+ c(2, 'Retinal ganglion cells'),
+ c(3, 'Amacrine cells'),
+ c(4, 'Amacrine cells'),
+ c(5, 'Amacrine cells'),
+ c(6, 'Amacrine cells'),
+ c(7, 'Amacrine cells'),
+ c(8, 'Amacrine cells'),
+ c(9, 'Amacrine cells'),
+ c(10, 'Amacrine cells'),
+ c(11, 'Amacrine cells'),
+ c(12, 'Amacrine cells'),
+ c(13, 'Amacrine cells'),
+ c(14, 'Amacrine cells'),
+ c(15, 'Amacrine cells'),
+ c(16, 'Amacrine cells'),
+ c(17, 'Amacrine cells'),
+ c(18, 'Amacrine cells'),
+ c(19, 'Amacrine cells'),
+ c(20, 'Amacrine cells'),
+ c(21, 'Amacrine cells'),
+ c(22, 'Amacrine cells'),
+ c(23, 'Amacrine cells'),
+ c(24, 'Rods'),
+ c(25, 'Cones'),
+ c(26, 'Bipolar cells'),
+ c(27, 'Bipolar cells'),
+ c(28, 'Bipolar cells'),
+ c(29, 'Bipolar cells'),
+ c(30, 'Bipolar cells'),
+ c(31, 'Bipolar cells'),
+ c(32, 'Bipolar cells'),
+ c(33, 'Bipolar cells'),
+ c(34, 'Muller glia'),
+ c(35, 'Astrocytes'),
+ c(36, 'Fibroblasts'),
+ c(37, 'Vascular endothelium'),
+ c(38, 'Pericytes'),
+ c(39, 'Microglia')))
+colnames(naming) <- c('Macosko_Clusters', 'Cell Type')
+naming$Macosko_Clusters <- as.integer(naming$Macosko_Clusters)
+macosko_cluster <- macosko_cluster %>% left_join(.,naming)
+row.names(macosko_cluster) <- macosko_cluster$id
+macosko_cluster <- macosko_cluster %>% select(Macosko_Clusters, `Cell Type`)
+retina <- AddMetaData(object = retina, metadata = macosko_cluster, col.name = c('Macosko_Clusters', `Cell Type`))
+retina <- AddMetaData(object = retina, metadata = macosko_cluster$`Cell Type`, col.name = 'Cell_Type')
+
+#print with macosko clustering
+TSNEPlot(object = retina, do.label = TRUE, group.by = 'Macosko_Clusters')
+
+
+# save updated object
+save(retina, file = "./retina_seurat__2.Rdata")
+```
+
+Plot marker genes and ZFP503.
+```{r, fig.width=6, fig.height=4}
+# plot individual genes
+FeaturePlot(object = retina, features.plot = c("PAX6", "VSX2", "OPN1MW", "RLBP1","NRL","SLC17A6","CRX","ZFP503"), 
+            cols.use = c("gray", 
+                         "blue"))
+```
+
+
+
+Cells with ZFP503 Expression. 
+
+`r table(retina@data['ZFP503',] > 0.1)['TRUE']` cells out of `r ncol(retina@data)` have detectable ZFP503 expression. 
+```{r}
+table(retina@data['ZFP503',] > 0.1)
+```
+
+Expression of key retinal markers in ZFP503 positive cells
+```{r}
+zfp503_pos_cells <- colnames(retina@data)[retina@data['ZFP503',] > 0.1]
+
+retina@data[c("POU4F1", "CALB2", "ISL1", "LHX2","PAX6", "VSX2", "OPN1MW", "RLBP1","NRL","SLC17A6","CRX","ZFP503"), zfp503_pos_cells] %>% as.matrix() %>% data.frame() %>% rownames_to_column('Gene') %>% gather('cell_id', 'Expression', -Gene) %>% ggplot(aes(x=Gene, y=Expression)) + geom_violin() + geom_jitter(alpha=0.2) + theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+retina@data[c("POU4F1", "CALB2", "ISL1", "LHX2","PAX6", "VSX2", "OPN1MW", "RLBP1","NRL","SLC17A6","CRX","ZFP503"), zfp503_pos_cells] %>% as.matrix() %>% data.frame() %>% rownames_to_column('Gene') %>% gather('cell_id', 'Expression', -Gene) %>% ggplot(aes(x=Gene, y=Expression)) + geom_boxplot() + geom_jitter(alpha=0.2) + theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust=0.5))
+```
+
+Macosko Clustering cell type assignments for ZFP503
+
+Over half are assigned as amacrine
+```{r}
+retina@meta.data[zfp503_pos_cells,'Cell Type'] %>% table()
+```
+
+Most expressed genes across the `r table(retina@data['ZFP503',] > 0.1)['TRUE']` cells
+```{r}
+retina@data[,zfp503_pos_cells] %>% 
+  as.matrix() %>% 
+  data.frame() %>% 
+  rownames_to_column('Gene') %>% 
+  gather('cell_id', 'Expression', -Gene) %>% 
+  group_by(cell_id) %>% 
+  top_n(10) %>% 
+  pull(Gene) %>% 
+  table() %>% 
+  sort(decreasing = T)
+```
+
+Find differentially expressed genes in ZFP503 positive cells relative to non-ZFP503 expressing cells
+```{r}
+retina_zfp503 <- retina
+zfp503_tf <- retina@data['ZFP503',] > 0.1
+zfp503_tf <- gsub(TRUE, 1, zfp503_tf)
+zfp503_tf <- gsub(FALSE, 0, zfp503_tf)
+names(zfp503_tf) <- names(retina@ident)
+zfp503_tf <- as.factor(zfp503_tf)
+retina_zfp503@ident <- zfp503_tf
+
+zfp503_markers <- FindMarkers(object = retina_zfp503, ident.1 = 1)
+
+zfp503_markers %>% DT::datatable()
+
+```
+
+
+Impute categories for remaining ~30,000 cells not included in classification
+```{r}
+library(caret)
+library(doMC)
+registerDoMC(cores=8)
+set.seed(1234)
+trainIndex <- createDataPartition(retina@meta.data$res.1, p=0.5, times=1, list=T)
+macosko_trainIndex <- trainIndex <- createDataPartition(retina@meta.data$Macosko_Clusters, p=0.5, times=1, list=T)
+retinaTrain <- t(retina@scale.data[,trainIndex$Resample1])
+retinaTest <- t(retina@scale.data[,-trainIndex$Resample1])
+outcomesTrain <- as.factor(retina@meta.data$res.1[trainIndex$Resample1])
+outcomesTest <- as.factor(retina@meta.data$res.1[-trainIndex$Resample1])
+myControl <- trainControl(method = "repeatedcv", repeats=5, number = 10)
+
+rf_mod <- train(x=retinaTrain, y=outcomesTrain, method = 'rf', trControl = myControl)
+svm_mod <- train(x=retinaTrain, y=outcomesTrain, method = 'svmLinear', trControl = myControl)
+LogitBoost_mod <- train(x=retinaTrain, y=outcomesTrain, method = 'LogitBoost', trControl = myControl)
+bayes_mod <- train(x=retinaTrain, y=outcomesTrain, method = 'bayesglm', trControl = myControl)
+#naive_bayes_mod <-  train(x=retinaTrain, y=outcomesTrain, method = 'naive_bayes', trControl = myControl)
+```
+
+svm works the best so far (still want to try keras neural net)
+```{r}
+pred <- predict(svm_mod, retinaTest)
+postResample(pred=pred, obs=outcomesTest)
+```
