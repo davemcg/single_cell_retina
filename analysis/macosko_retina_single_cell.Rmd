@@ -58,6 +58,7 @@ As Macosko et al. have done the difficult work of classifying the cell types alr
 
 # Macosko Cluster and Cell Type Table/Key
 ```{r}
+source('scripts/macosko_cluster_assignments.R')
 macosko_cluster %>% group_by(Macosko_Clusters) %>%  summarise(`Cell Type` = paste(unique(`Cell Type`), collapse = ','))%>% arrange(Macosko_Clusters) %>% DT::datatable(options=list(pageLength = 40))
 ```
 
@@ -139,4 +140,9 @@ zfp503_markers <- FindMarkers(object = retina_zfp503, ident.1 = 1)
 
 zfp503_markers %>% DT::datatable()
 
+```
+
+# SessionInfo
+```{r}
+sessionInfo()
 ```
