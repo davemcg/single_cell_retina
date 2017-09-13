@@ -4,6 +4,14 @@ library(cowplot)
 library(Seurat)
 library(tidyverse)
 library(here)
+
+
+# raw data
+# https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE63472
+# https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE63472&format=file&file=GSE63472%5FP14Retina%5FlogDGE%2Etxt%2Egz
+# https://www.ncbi.nlm.nih.gov/geo/download/?acc=GSE63472&format=file&file=GSE63472%5FP14Retina%5Fmerged%5Fdigital%5Fexpression%2Etxt%2Egz
+# http://mccarrolllab.com/wp-content/uploads/2015/05/retina_clusteridentities.txt
+
 dge <- read_tsv(here('data/GSE63472_P14Retina_merged_digital_expression.txt.gz'))
 dge_mat <- dge[,2:ncol(dge)] %>% as.matrix() %>%  Matrix(.,sparse = TRUE)
 row.names(dge_mat) <- dge$gene
