@@ -4,7 +4,7 @@
 library(here)
 library(caret)
 library(doMC)
-registerDoMC(cores=8)
+registerDoMC(cores=4)
 set.seed(1234)
 load(here('data/retina_seurat_subSet.Rdata'))
 trainIndex <- createDataPartition(retina@meta.data$res.1, p=0.5, times=1, list=T)
@@ -18,7 +18,7 @@ myControl <- trainControl(method = "repeatedcv", repeats=5, number = 10)
 # ~80 accuracy
 rf_mod <- train(x=retinaTrain, y=outcomesTrain, method = 'rf', trControl = myControl)
 # ~92% accuracy
-svm_mod <- train(x=retinaTrain, y=outcomesTrain, method = 'svmLinear', trControl = myControl, tuneGrid = data.frame(.C = c(0.0001, 0.001, 0.01, 0.1, 0.25)))
+svm_mod <- train(x=retinaTrain, y=outcomesTrain, method = 'svmLinear', trControl = myControl, tuneGrid = data.frame(.C = c(0.0001, 0.001, 0.01, 0.1)))
 save(svm_mod, file=here('data/svm_imputation_mod.Rdata'))
 #LogitBoost_mod <- train(x=retinaTrain, y=outcomesTrain, method = 'LogitBoost', trControl = myControl)
 # ~20% accuracy
