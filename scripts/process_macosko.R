@@ -77,7 +77,7 @@ macosko_cluster = read_tsv(here('data/retina_clusteridentities.txt'), col_names 
 row.names(macosko_cluster) <- macosko_cluster$X1
 macosko_cluster <- macosko_cluster %>% select(X1, X2)
 colnames(macosko_cluster) <- c('id','Macosko_Clusters')
-macosko_cluster$Macosko_Clusters <- as.integer(macosko_cluster$Macosko_Clusters)
+macosko_cluster$Macosko_Clusters <- as.integer(as.character(macosko_cluster$Macosko_Clusters))
 # https://github.com/olgabot/macosko2015/blob/master/notebooks/02_make_celltype_metadata.ipynb
 naming <- data.frame(rbind(c(1, 'Horizontal cells'),
                            c(2, 'Retinal ganglion cells'),
@@ -119,12 +119,14 @@ naming <- data.frame(rbind(c(1, 'Horizontal cells'),
                            c(38, 'Pericytes'),
                            c(39, 'Microglia')))
 colnames(naming) <- c('Macosko_Clusters', 'Cell Type')
-naming$Macosko_Clusters <- as.integer(naming$Macosko_Clusters)
+naming$Macosko_Clusters <- as.integer(as.character(naming$Macosko_Clusters))
 macosko_cluster <- macosko_cluster %>% left_join(.,naming)
 row.names(macosko_cluster) <- macosko_cluster$id
 macosko_cluster <- macosko_cluster %>% select(Macosko_Clusters, `Cell Type`)
 retina <- AddMetaData(object = retina, metadata = macosko_cluster, col.name = c('Macosko_Clusters', `Cell Type`))
 retina <- AddMetaData(object = retina, metadata = macosko_cluster$`Cell Type`, col.name = 'Cell_Type')
+retina_superset <- AddMetaData(object = retina_superset, metadata = macosko_cluster, col.name = c('Macosko_Clusters', `Cell Type`))
+retina_superset <- AddMetaData(object = retina_superset, metadata = macosko_cluster$`Cell Type`, col.name = 'Cell_Type')
 
 #print with macosko clustering
 #TSNEPlot(object = retina, do.label = TRUE, group.by = 'Macosko_Clusters')
