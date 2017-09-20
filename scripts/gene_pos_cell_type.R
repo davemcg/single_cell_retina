@@ -1,11 +1,12 @@
 # gene+ cell assignment
-
-# takes the macosko cell classifications and returns, for each gene, the percentage of each of the 12 major cell types 
+library(Seurat)
+library(tidyverse)
+library(here)
+# takes the macosko cell classifications and returns, for each gene, the positive counts (for the gene) in each of the 12 major cell types 
 load('data/retina_seurat_superSet.Rdata')
 source('scripts/macosko_cluster_assignments.R')
 
-library(Seurat)
-library(tidyverse)
+
 
 all_genes <- retina_superset@data %>% rownames()
 gene_type_counts <- data.frame(c('Amacrine cells','Astrocytes','Bipolar cells','Cones','Fibroblasts','Horizontal cells','Microglia','Muller glia','Pericytes','Retinal ganglion cells','Rods','Vascular endothelium'))
