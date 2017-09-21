@@ -8,6 +8,7 @@ library(RSQLite)
 # 2. a sqlite file with the individual sample counts for each of the 12 major cell types
 # 3. a file with the tsne coordinates 
 load('data/retina_seurat_superSet.Rdata')
+load('data/retina_seurat_subSet.Rdata')
 source('scripts/macosko_cluster_assignments.R')
 
 
@@ -32,17 +33,26 @@ save(gene_type_counts, file='data/gene_type_counts.Rdata')
 ## 2
 gene_count_long <- retina_superset@data %>% as.matrix() %>% data.frame() %>% rownames_to_column('Gene') %>% gather(`Cell ID`, `Gene Count`, -Gene) %>% filter(`Gene Count` > 0)
 metadata_long <-  retina_superset@meta.data %>% as.matrix() %>% data.frame() %>% rownames_to_column('Cell ID') %>% dplyr::select(`Cell ID`, `Cell.Type`, Macosko_Clusters) %>% mutate(`Cell Type` = Cell.Type) %>% select(-Cell.Type)
+metadata_short <-  retina@meta.data %>% as.matrix() %>% data.frame() %>% rownames_to_column('Cell ID') %>% dplyr::select(`Cell ID`, `Cell.Type`, Macosko_Clusters) %>% mutate(`Cell Type` = Cell.Type) %>% select(-Cell.Type)
 gene_count_long_metadata <- left_join(gene_count_long, metadata_long) %>% filter(!is.na(`Cell Type`))
-sqlite_file <- 'data/single_cell_gene_counts.sqlite'
+sqlite_file <- '~/git/Human_eyeIntegration_App/www/single_cell_retina_info.sqlite'
 sqldb <- dbConnect(SQLite(), dbname=sqlite_file)
-dbWriteTable(sqldb, 'single_cell_gene_counts', gene_count_long_metadata, field.types=NULL, over)
+dbWriteTable(sqldb, 'single_cell_gene_counts', gene_count_long_metadata, field.types=NULL)
+dbWriteTable(sqldb, 'single_cell_metadata_long', metadata_long, field.types=NULL)
+dbWriteTable(sqldb, 'single_cell_metadata_short', metadata_short, field.types=NULL)
 dbGetQuery(sqldb, "CREATE INDEX GeneName on single_cell_gene_counts(Gene)")
+
+dbDisconnect(sqldb)
 
 # 3
 tsne_coords <-GetDimReduction(object = retina, reduction.type = "tsne", slot = "cell.embeddings") %>% data.frame() %>% rownames_to_column('Cell ID') %>% 
   left_join(metadata_long) %>% filter(!is.na(`Cell Type`))
-tsne_coords$Alpha = 0.03
+dbWriteTable(sqldb, 'tsne_coords', tsne_coords, field.types=NULL)
+dbDisconnect(sqldb)
+
+
 # example ggplot
+tsne_coords2 <- dbGetQuery(sqldb, 'SELECT * FROM tsne_coords')
 ggplot(tsne_coords, aes(x=tSNE_1,y=tSNE_2, colour=`Cell Type`))  + geom_point()
 # example labeling of samples with ZFP503 expression
 samples_gene_up <- colnames(retina_superset@data[,retina_superset@data['ABCA4',] > 5])
