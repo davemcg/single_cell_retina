@@ -44,4 +44,20 @@ ggplot(tsne_coords, aes(x=tSNE_1,y=tSNE_2, colour=`Cell Type`))  +
   geom_point(alpha=tsne_coords %>% mutate(Alpha = ifelse(`Cell ID` %in% samples_gene_up, 0.5, 0.03)) %>% pull(Alpha)) + 
   xlab('tSNE 1') + ylab('tSNE 2') 
 
-# 
+# calculate ks p values for each gene against twelve cell types
+library(broom)
+cell_types <- c('Rods','Bipolar cells','Amacrine cells','Cones','Muller glia','Retinal ganglion cells','Vascular endothelium','Horizontal cells','Microglia','Pericytes','Astrocytes','Fibroblasts')
+
+cell_type_ids <- list()
+set.seed(1234)
+for (i in cell_types){
+  cell_type_ids[[i]] <- retina_superset@meta.data %>% data.frame() %>% rownames_to_column('Cell ID') %>% filter(`Cell.Type` == i) %>% pull(`Cell ID`)
+}
+
+gene_test <- 'ZFP503'
+for (i in cell_types){
+  print(i)
+  print(t.test(retina_superset@data[gene_test,retina_superset@data[gene_test,cell_type_ids[[i]]] > 0], 
+                as.vector(retina_superset@data[,cell_type_ids[[i]]])) %>% tidy())
+}
+
