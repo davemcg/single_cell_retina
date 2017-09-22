@@ -55,9 +55,18 @@ for (i in cell_types){
 }
 
 gene_test <- 'ZFP503'
-for (i in cell_types){
-  print(i)
-  print(t.test(retina_superset@data[gene_test,retina_superset@data[gene_test,cell_type_ids[[i]]] > 0], 
-                as.vector(retina_superset@data[,cell_type_ids[[i]]])) %>% tidy())
-}
 
+cell_type_tester <- function(gene_name, cell_type_ids){
+  cell_type_test <- data.frame()
+  for (i in cell_types){
+    if (sum(retina_superset@data[gene_name,cell_type_ids[[i]]] > 0) > 0){
+      test_results <- ks.test(retina_superset@data[gene_name,retina_superset@data[gene_name,cell_type_ids[[i]]] > 0], 
+                             as.vector(retina_superset@data[,cell_type_ids[[i]]])) %>% 
+        tidy() %>% 
+        mutate(cell.type=i, gene=gene_name)
+        
+        cell_type_test <- rbind(test_results, cell_type_test)
+    }
+  }
+  return(cell_type_test)
+}
