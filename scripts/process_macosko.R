@@ -47,7 +47,7 @@ retina <- FilterCells(object = retina, subset.names = c("nGene", "percent.mito")
 
 # Normalize the data
 retina <- NormalizeData(object = retina, normalization.method = "LogNormalize")
-
+retina_superset <- NormalizeData(object = retina_superset, normalization.method = 'LogNormalize')
 # Choose gene outliers on mean-variability plot
 retina <- FindVariableGenes(object = retina, x.low.cutoff = 0, y.cutoff = 2)
 length(x = retina@var.genes)
@@ -58,7 +58,7 @@ length(x = retina@var.genes)
 # I am using the variable gene set calculated from the 'tight' FilterCell threshold, as these are a more stable set
 retina <- ScaleData(object = retina, vars.to.regress = c("percent.mito", "nUMI","orig.ident"), genes.use = retina@var.genes, model.use = "negbinom")
 # also scale on the superset for later classification
-retina_superset <- ScaleData(object = retina_superset, vars.to.regress = c("percent.mito", "nUMI","orig.ident"), genes.use = retina@var.genes, model.use = "negbinom")
+# retina_superset <- ScaleData(object = retina_superset, vars.to.regress = c("percent.mito", "nUMI","orig.ident"), genes.use = retina@var.genes, model.use = "negbinom")
 
 # Run PCA with the IRLBA package (iteratively computes the top dimensions, dramatic increase in speed since we only use a fraction of the PCs anyways)
 # if you see the warning "did not converge–results might be invalid!; try increasing maxit or fastpath=FALSE", try increasing maxit
