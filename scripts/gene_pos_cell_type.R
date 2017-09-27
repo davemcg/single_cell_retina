@@ -6,6 +6,8 @@ library(RSQLite)
 # takes the macosko cell classifications and my processed (Seurat) macosko data and returns for eyeIntegration:
 # 1. a sqlite file with the individual sample counts for each of the 12 major cell types and metadata (subset and superset / short and long) and Gene names sql table
 # 2. a sql table with the tsne coordinates 
+# 3. a sql table with summarized values for ratios of each of the 12 cell types by gene
+# 4. a sql table with mean expression of each gene by the 12 cell types and the ranks and deciles for each gene
 
 load('~/git/single_cell_retina/data/retina_seurat_superSet.Rdata')
 load('~/git/single_cell_retina/data/retina_seurat_subSet.Rdata')
@@ -32,8 +34,35 @@ dbGetQuery(sqldb, "CREATE INDEX GeneName on single_cell_gene_counts(Gene)")
 tsne_coords <-GetDimReduction(object = retina, reduction.type = "tsne", slot = "cell.embeddings") %>% data.frame() %>% rownames_to_column('Cell ID') %>% 
   left_join(metadata_long) %>% filter(!is.na(`Cell Type`))
 dbWriteTable(sqldb, 'tsne_coords', tsne_coords, field.types=NULL)
-dbDisconnect(sqldb)
 
+
+# 3
+cell_types <- c('Rods','Bipolar cells','Amacrine cells','Cones','Muller glia','Retinal ganglion cells','Vascular endothelium','Horizontal cells','Microglia','Pericytes','Astrocytes','Fibroblasts')
+gene_cell_type_perc <-gene_count_long_metadata %>% 
+  group_by(Gene, `Cell Type`) %>% 
+  summarise(Count=n())%>% 
+  mutate(Percentage=(Count/sum(Count))*100) %>% 
+  left_join(data.frame(cell_types) %>% 
+              select(`Cell Type`=cell_types),.,by=c('Cell Type'='Cell Type'))
+# calc rank and decile
+gene_cell_type_perc <- gene_cell_type_perc %>% arrange(`Cell Type`, -Percentage) %>% group_by(`Cell Type`) %>% mutate(Rank=row_number()) %>% mutate(Decile=ntile(-Rank, 10))
+dbWriteTable(sqldb, 'gene_cell_type_perc', gene_cell_type_perc, field.types=NULL, overwrite=TRUE)
+
+# 4
+gene_means_by_type <- data.frame()
+for (i in cell_types){
+  Mean <- apply(retina_superset@data[,cell_type_ids[[i]]], 1, function(x) mean(x))
+  Mean <- data.frame(Mean)
+  Mean$Gene <- row.names(retina_superset@data)
+  Mean$`Cell Type` <- i
+  gene_means_by_type <- bind_rows(gene_means_by_type, Mean)
+}
+gene_means_by_type <- gene_means_by_type %>% arrange(`Cell Type`, -Mean) %>% group_by(`Cell Type`) %>% mutate(Rank=row_number()) %>% mutate(Decile=ntile(-Rank, 10)) %>% 
+  select(Gene, `Cell Type`, Mean, Rank, Decile)
+dbWriteTable(sqldb, 'gene_means_by_type', gene_means_by_type, field.types=NULL, overwrite=TRUE)
+
+# disconnect database
+dbDisconnect(sqldb)
 
 # example ggplot
 tsne_coords2 <- dbGetQuery(sqldb, 'SELECT * FROM tsne_coords')
