@@ -80,13 +80,21 @@ for (i in cell_types){
 #gene_means_by_type <- gene_means_by_type %>% arrange(`Cell Type`, -Mean) %>% group_by(`Cell Type`) %>% mutate(Rank=row_number()) %>% mutate(Decile=ntile(-Rank, 10)) %>% 
 #  select(Gene, `Cell Type`, Mean, Rank, Decile)
 #dbWriteTable(sqldb, 'gene_means_by_type', gene_means_by_type, field.types=NULL, overwrite=TRUE)
+
+# join 3,4,5 together
 gene_cell_type_stats <- left_join(gene_cell_type_perc, cell_type_gene_perc, by=c('Cell Type', 'Gene')) %>% 
-  right_join(. , gene_means_by_type, by=c('Cell Type', 'Gene'))
+  right_join(. , gene_means_by_type, by=c('Cell Type', 'Gene')) %>% 
+  select(-`Cell Count.y`, -`Total Count`) %>%
+  rename(`Cell Count`='Cell Count.x')
+gene_cell_type_stats[is.na(gene_cell_type_stats)] <- 0
+gene_cell_type_stats <- gene_cell_type_stats %>% left_join(cell_type_counts) %>% select(Gene, `Cell Type`, `Cell Count`, `Total Count`, Mean, `Percentage Cells`, `Percentage Cell Types`)
 
-## left_join 3,4,5 together
-
-## calc stat (rank/decile) for 3,4,5
-
+# calculate rank/decile for 3,4,5
+gene_cell_type_stats <- gene_cell_type_stats %>% 
+  arrange(`Cell Type`, -`Percentage Cell Types`) %>% group_by(`Cell Type`) %>% mutate(Rank_cell_types=row_number()) %>% mutate(Decile_cell_types=ntile(-Rank_cell_types, 10)) %>% #3
+  arrange(`Cell Type`, -`Percentage Cells`) %>% group_by(`Cell Type`) %>% mutate(Rank_cells=row_number()) %>% mutate(Decile_cells=ntile(-Rank_cells, 10)) %>%  #4
+  arrange(`Cell Type`, -Mean) %>% group_by(`Cell Type`) %>% mutate(Rank_mean=row_number()) %>% mutate(Decile_mean=ntile(-Rank_mean, 10)) #5
+  
 # disconnect database
 dbDisconnect(sqldb)
 
