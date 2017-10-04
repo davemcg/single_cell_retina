@@ -27,7 +27,7 @@ dbWriteTable(sqldb, 'single_cell_gene_counts', gene_count_long_metadata, field.t
 dbWriteTable(sqldb, 'single_cell_metadata_long', metadata_long, field.types=NULL)
 dbWriteTable(sqldb, 'single_cell_metadata_short', metadata_short, field.types=NULL)
 dbWriteTable(sqldb, 'gene_names', gene_names, field.types=NULL)
-dbGetQuery(sqldb, "CREATE INDEX GeneName on single_cell_gene_counts(Gene)")
+dbSendQuery(sqldb, "CREATE INDEX GeneName on single_cell_gene_counts(Gene)")
 
 #dbDisconnect(sqldb)
 
@@ -94,7 +94,10 @@ gene_cell_type_stats <- gene_cell_type_stats %>%
   arrange(`Cell Type`, -`Percentage Cell Types`) %>% group_by(`Cell Type`) %>% mutate(Rank_cell_types=row_number()) %>% mutate(Decile_cell_types=ntile(-Rank_cell_types, 10)) %>% #3
   arrange(`Cell Type`, -`Percentage Cells`) %>% group_by(`Cell Type`) %>% mutate(Rank_cells=row_number()) %>% mutate(Decile_cells=ntile(-Rank_cells, 10)) %>%  #4
   arrange(`Cell Type`, -Mean) %>% group_by(`Cell Type`) %>% mutate(Rank_mean=row_number()) %>% mutate(Decile_mean=ntile(-Rank_mean, 10)) #5
-  
+
+# add new table to db
+dbWriteTable(sqldb, 'gene_cell_type_stats', gene_cell_type_stats, field.types=NULL)
+dbSendQuery(sqldb, "CREATE INDEX GeneNameStats on gene_cell_type_stats(Gene)")
 # disconnect database
 dbDisconnect(sqldb)
 
