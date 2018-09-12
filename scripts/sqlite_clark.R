@@ -30,7 +30,10 @@ dbSendQuery(sqldb, "CREATE INDEX clark_GeneName on clark__SC_gene_counts(Gene)")
 #dbDisconnect(sqldb)
 
 # 2
-dbWriteTable(sqldb, 'clark__tsne_coords', metadata_long %>% select(umap_coord1, umap_coord2, umap_coord3), field.types=NULL)
+dbWriteTable(sqldb, 'clark__tsne_coords', metadata_long %>% 
+               mutate(umap_coord1 = as.numeric(as.character(umap_coord1)),
+                      umap_coord2 = as.numeric(as.character(umap_coord2)),
+                      umap_coord3 = as.numeric(as.character(umap_coord3))), field.types=NULL, overwrite=TRUE)
 
 
 # 3
@@ -67,39 +70,29 @@ cell_type_gene_perc <-gene_count_long_metadata %>%
 #cell_type_gene_perc <- cell_type_gene_perc %>% arrange(`Cell Type`, -Percentage) %>% group_by(`Cell Type`) %>% mutate(Rank=row_number()) %>% mutate(Decile=ntile(-Rank, 10)) 
 #dbWriteTable(sqldb, 'cell_type_perc', gene_cell_type_perc, field.types=NULL, overwrite=TRUE)
 # 5
-cell_type_ids <- list()
-set.seed(1234)
-for (i in cell_types){
-  cell_type_ids[[i]] <- retina@meta.data %>% data.frame() %>% rownames_to_column('Cell ID') %>% filter(new_CellType == i) %>% pull(`Cell ID`)
-}
-gene_means_by_type <- data.frame()
-for (i in cell_types){
-  Mean <- apply(retina@data[,cell_type_ids[[i]]], 1, function(x) mean(x))
-  Mean <- data.frame(Mean)
-  Mean$Gene <- row.names(retina@data)
-  Mean$`Cell Type` <- i
-  gene_means_by_type <- bind_rows(gene_means_by_type, Mean)
-}
-#gene_means_by_type <- gene_means_by_type %>% arrange(`Cell Type`, -Mean) %>% group_by(`Cell Type`) %>% mutate(Rank=row_number()) %>% mutate(Decile=ntile(-Rank, 10)) %>% 
-#  select(Gene, `Cell Type`, Mean, Rank, Decile)
-#dbWriteTable(sqldb, 'gene_means_by_type', gene_means_by_type, field.types=NULL, overwrite=TRUE)
+# by type AND age
+
+gene_means_by_type <- gene_count_long_metadata %>% 
+						group_by(Gene, `Cell Type`, age) %>% 
+						summarise(Mean = mean(`Gene Count`)) %>%
+						select(Gene, `Cell Type`, Age = age, Mean)
 
 # join 3,4,5 together
-gene_cell_type_stats <- left_join(gene_cell_type_perc, cell_type_gene_perc, by=c('Cell Type', 'Gene')) %>% 
-  right_join(. , gene_means_by_type, by=c('Cell Type', 'Gene')) %>% 
+gene_cell_type_stats <- left_join(gene_cell_type_perc, cell_type_gene_perc, by=c('Cell Type', 'Gene', 'Age')) %>% 
+  right_join(. , gene_means_by_type, by=c('Cell Type', 'Gene', 'Age')) %>% 
   select(-`Cell Count.y`, -`Total Count`) %>%
   rename(`Cell Count`='Cell Count.x')
 gene_cell_type_stats[is.na(gene_cell_type_stats)] <- 0
-gene_cell_type_stats <- gene_cell_type_stats %>% left_join(cell_type_counts) %>% select(Gene, `Cell Type`, `Cell Count`, `Total Count`, Mean, `Percentage Cells`, `Percentage Cell Types`)
+gene_cell_type_stats <- gene_cell_type_stats %>% left_join(cell_type_counts) %>% select(Gene, Age, `Cell Type`, `Cell Count`, `Total Count`, Mean, `Percentage Cells`, `Percentage Cell Types`)
 
 # calculate rank/decile for 3,4,5
 gene_cell_type_stats <- gene_cell_type_stats %>% 
-  arrange(`Cell Type`, -`Percentage Cell Types`) %>% group_by(`Cell Type`) %>% mutate(Rank_cell_types=row_number()) %>% mutate(Decile_cell_types=ntile(-Rank_cell_types, 10)) %>% #3
-  arrange(`Cell Type`, -`Percentage Cells`) %>% group_by(`Cell Type`) %>% mutate(Rank_cells=row_number()) %>% mutate(Decile_cells=ntile(-Rank_cells, 10)) %>%  #4
-  arrange(`Cell Type`, -Mean) %>% group_by(`Cell Type`) %>% mutate(Rank_mean=row_number()) %>% mutate(Decile_mean=ntile(-Rank_mean, 10)) #5
+  arrange(`Cell Type`, -`Percentage Cell Types`) %>% group_by(`Cell Type`, Age) %>% mutate(Rank_cell_types=row_number()) %>% mutate(Decile_cell_types=ntile(-Rank_cell_types, 10)) %>% #3
+  arrange(`Cell Type`, -`Percentage Cells`) %>% group_by(`Cell Type`, Age) %>% mutate(Rank_cells=row_number()) %>% mutate(Decile_cells=ntile(-Rank_cells, 10)) %>%  #4
+  arrange(`Cell Type`, -Mean) %>% group_by(`Cell Type`, Age) %>% mutate(Rank_mean=row_number()) %>% mutate(Decile_mean=ntile(-Rank_mean, 10)) #5
 
 # add new table to db
-dbWriteTable(sqldb, 'clark__gene_cell_type_stats', gene_cell_type_stats, field.types=NULL)
+dbWriteTable(sqldb, 'clark__gene_cell_type_stats', gene_cell_type_stats, field.types=NULL, overwrite=TRUE)
 dbSendQuery(sqldb, "CREATE INDEX clark__GeneNameStats on clark__gene_cell_type_stats(Gene)")
 # disconnect database
 dbDisconnect(sqldb)
